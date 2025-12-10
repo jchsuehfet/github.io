@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星際守衛者：魔王降臨</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        
+        body {
+            background-color: #050505;
+            color: #ffffff;
+            font-family: 'Orbitron', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        
+        .game-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #gameCanvas {
+            background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%);
+            border: 2px solid #00f0ff;
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.3);
+            border-radius: 8px;
+            cursor: crosshair;
+            position: relative;
+            z-index: 1;
+        }
+
+        .scanline {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 5;
+            border-radius: 8px;
+            opacity: 0.3;
+        }
+
+        .ui-overlay {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px currentColor;
+            z-index: 10;
+            font-weight: 700;
+        }
+
+        .score-box { color: #00f0ff; font-size: 1.2rem; }
+        .level-box { color: #ffeb3b; font-size: 1.5rem; text-align: center; }
+        .highscore-box { color: #ff0055; font-size: 1.2rem; }
+
+        /* BOSS 血條樣式 */
+        .boss-hud {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 70%;
+            text-align: center;
+            z-index: 15;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        
+        .boss-warning {
+            color: #ff0055;
+            font-size: 1.5rem;
+            font-weight: 900;
+            margin-bottom: 5px;
+            text-shadow: 0 0 20px #ff0055;
+            animation: pulse 0.5s infinite alternate;
+        }
+
+        .boss-hp-bar {
+            width: 100%;
+            height: 12px;
+            background: rgba(50, 0, 20, 0.5);
+            border: 2px solid #ff0055;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.4);
+        }
+
+        .boss-hp-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff0055, #ff5500);
+            transition: width 0.2s ease-out;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.6; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1.05); }
+        }
+
+        .btn {
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid #00f0ff;
+            color: #00f0ff;
+            padding: 12px 24px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            background: #00f0ff;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+        }
+
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 10, 20, 0.95);
+            border: 1px solid #00f0ff;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+            z-index: 20;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+            min-width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            backdrop-filter: blur(5px);
+        }
+
+        .hidden { display: none !important; opacity: 0; }
+        
+        .title-text {
+            font-size: 2.2rem;
+            background: linear-gradient(to right, #00f0ff, #ff0055);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 900;
+            margin-bottom: 5px;
+        }
+
+        /* 關卡完成通知 */
+        .level-complete {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            color: #ffeb3b;
+            text-shadow: 0 0 30px #ffeb3b;
+            font-weight: 900;
+            z-index: 18;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .show-level-msg { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="game-wrapper">
+        <div class="ui-overlay">
+            <div id="scoreDisplay" class="score-box">SCORE: 0</div>
+            <div id="levelDisplay" class="level-box">LEVEL 1</div>
+            <div id="highScoreDisplay" class="highscore-box">HI: 0</div>
+        </div>
+
+        <div style="position: relative;">
+            <canvas id="gameCanvas"></canvas>
+            <div class="scanline"></div>
+
+            <!-- Boss HUD -->
+            <div id="bossHud" class="boss-hud hidden">
+                <div class="boss-warning">⚠ WARNING: BOSS APPROACHING ⚠</div>
+                <div class="boss-hp-bar">
+                    <div id="bossHpFill" class="boss-hp-fill"></div>
+                </div>
+            </div>
+
+            <!-- Level Complete Text -->
+            <div id="levelMsg" class="level-complete">LEVEL COMPLETE!</div>
+            
+            <!-- Menu Modal -->
+            <div id="gameModal" class="modal">
+                <h1 class="title-text">NEON<br>DEFENDER</h1>
+                <p id="modalText" style="color: #ccc;">準備好加入戰鬥了嗎？</p>
+                <button id="startBtn" class="btn">開始任務</button>
+                <div style="font-size: 0.8rem; color: #888; margin-top: 10px;">
+                    擊敗敵機累積進度，挑戰關卡 BOSS！<br>
+                    [ A / D ] 移動 · [ SPACE ] 射擊
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('scoreDisplay');
+        const levelEl = document.getElementById('levelDisplay');
+        const highScoreEl = document.getElementById('highScoreDisplay');
+        const modal = document.getElementById('gameModal');
+        const modalText = document.getElementById('modalText');
+        const startBtn = document.getElementById('startBtn');
+        const bossHud = document.getElementById('bossHud');
+        const bossHpFill = document.getElementById('bossHpFill');
+        const levelMsg = document.getElementById('levelMsg');
+
+        // === 遊戲狀態 ===
+        let gameState = 'MENU'; 
+        let score = 0;
+        let highScore = localStorage.getItem('neon_shooter_hiscore_v3') || 0;
+        let frames = 0;
+        let animationId;
+        let shakeIntensity = 0;
+        let timeScale = 1.0; // 用於慢動作特效
+
+        // 關卡系統
+        let level = 1;
+        let enemiesDefeated = 0;
+        let killsToSummonBoss = 10; // 第一關需要10隻
+        let bossActive = false;
+
+        const keys = { left: false, right: false, shoot: false };
+
+        let player;
+        let bullets = [];
+        let enemies = [];
+        let particles = [];
+        let stars = [];
+        let boss = null;
+
+        highScoreEl.textContent = `HI: ${highScore}`;
+        resize();
+
+        // === 類別定義 ===
+
+        class Star {
+            constructor() { this.reset(); this.y = Math.random() * canvas.height; }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = -10;
+                this.z = Math.random() * 2 + 0.5; 
+                this.size = Math.random() * 1.5;
+                this.alpha = Math.random() * 0.5 + 0.3;
+            }
+            update() {
+                this.y += (this.z * 0.5 + (bossActive ? 5 : 0)) * timeScale; // Boss 出現時加速背景，製造速度感
+                if (this.y > canvas.height) this.reset();
+            }
+            draw() {
+                ctx.fillStyle = `rgba(200, 200, 255, ${this.alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color, speed, type = 'burst') {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                const angle = Math.random() * Math.PI * 2;
+                const v = Math.random() * speed;
+                this.vx = Math.cos(angle) * v;
+                this.vy = Math.sin(angle) * v;
+                if (type === 'trail') {
+                    this.vx = (Math.random() - 0.5) * 1;
+                    this.vy = Math.random() * 2 + 2; 
+                    this.life = Math.random() * 20 + 10;
+                } else {
+                    this.life = Math.random() * 30 + 30;
+                }
+                this.maxLife = this.life;
+                this.type = type;
+            }
+            update() {
+                this.x += this.vx * timeScale;
+                this.y += this.vy * timeScale;
+                this.life -= 1 * timeScale;
+                this.alpha = this.life / this.maxLife;
+            }
+            draw() {
+                if (this.life <= 0) return;
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.type === 'trail' ? 2 : 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Player {
+            constructor() {
+                this.width = 40;
+                this.height = 50;
+                this.x = canvas.width / 2;
+                this.y = canvas.height - 100;
+                this.speed = 8;
+                this.color = '#00f0ff';
+                this.cooldown = 0;
+                this.hp = 1; // 一擊必殺，如果想加血量可以在這裡改
+            }
+            update() {
+                if (keys.left && this.x > this.width) this.x -= this.speed * timeScale;
+                if (keys.right && this.x < canvas.width - this.width) this.x += this.speed * timeScale;
+                if (this.cooldown > 0) this.cooldown -= 1 * timeScale;
+
+                if (frames % 2 === 0) {
+                    particles.push(new Particle(this.x, this.y + 20, '#00f0ff', 2, 'trail'));
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                let tilt = 0;
+                if (keys.left) tilt = -0.2;
+                if (keys.right) tilt = 0.2;
+                ctx.rotate(tilt);
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                ctx.strokeStyle = this.color;
+                ctx.fillStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, -30);
+                ctx.lineTo(15, 10);
+                ctx.lineTo(25, 25);
+                ctx.lineTo(10, 20);
+                ctx.lineTo(5, 30);
+                ctx.lineTo(-5, 30);
+                ctx.lineTo(-10, 20);
+                ctx.lineTo(-25, 25);
+                ctx.lineTo(-15, 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, -5, 3, 0, Math.PI*2);
+                ctx.fill();
+                ctx.restore();
+            }
+            shoot() {
+                if (this.cooldown <= 0) {
+                    bullets.push(new Bullet(this.x, this.y - 30, -15, '#ffeb3b', 'player'));
+                    this.cooldown = 12; 
+                }
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, vy, color, source) {
+                this.x = x;
+                this.y = y;
+                this.vy = vy; // 速度包含方向
+                this.color = color;
+                this.source = source; // 'player' or 'enemy'
+                this.width = source === 'enemy' ? 8 : 4;
+                this.height = source === 'enemy' ? 8 : 15;
+                this.markedForDeletion = false; // 新增：標記刪除
+            }
+            update() {
+                this.y += this.vy * timeScale;
+            }
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.beginPath();
+                if (this.source === 'enemy') {
+                    ctx.arc(this.x, this.y, 4, 0, Math.PI*2);
+                } else {
+                    ctx.roundRect(this.x - 2, this.y, 4, 20, 2);
+                }
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Enemy {
+            constructor() {
+                this.radius = Math.random() * 15 + 15;
+                this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+                this.y = -this.radius;
+                // 等級越高，速度越快
+                this.baseSpeed = Math.random() * 2 + 1 + (level * 0.5);
+                this.color = '#ff0055'; 
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.markedForDeletion = false; // 新增：標記刪除
+                
+                this.points = [];
+                const vertices = Math.floor(Math.random() * 4) + 5;
+                for (let i = 0; i < vertices; i++) {
+                    const angle = (i / vertices) * Math.PI * 2;
+                    const r = this.radius * (0.8 + Math.random() * 0.4); 
+                    this.points.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+                }
+            }
+            update() {
+                this.y += this.baseSpeed * timeScale;
+                this.rotation += this.rotationSpeed * timeScale;
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.fillStyle = 'rgba(255, 0, 85, 0.1)';
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, this.points[0].y);
+                for (let i = 1; i < this.points.length; i++) ctx.lineTo(this.points[i].x, this.points[i].y);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // === BOSS 類別 ===
+        class Boss {
+            constructor(lvl) {
+                this.level = lvl;
+                this.maxHp = 50 + (lvl * 30);
+                this.hp = this.maxHp;
+                this.x = canvas.width / 2;
+                this.y = -100; // 從螢幕上方進入
+                this.targetY = 100;
+                this.width = 120;
+                this.height = 80;
+                this.color = '#ff0055';
+                this.moveDir = 1; // 1 = right, -1 = left
+                this.speed = 2 + (lvl * 0.2);
+                this.shootCooldown = 0;
+                this.state = 'entering'; // entering, fight
+            }
+
+            update() {
+                // Boss 進場邏輯
+                if (this.state === 'entering') {
+                    this.y += 2 * timeScale;
+                    if (this.y >= this.targetY) {
+                        this.state = 'fight';
+                        // 顯示 Boss 血條 UI
+                        bossHud.classList.remove('hidden');
+                        bossHud.querySelector('.boss-warning').innerText = `⚠ WARNING: LEVEL ${this.level} BOSS ⚠`;
+                    }
+                } else if (this.state === 'fight') {
+                    // 左右移動
+                    this.x += this.speed * this.moveDir * timeScale;
+                    if (this.x > canvas.width - this.width/2 || this.x < this.width/2) {
+                        this.moveDir *= -1;
+                    }
+
+                    // 射擊邏輯
+                    if (this.shootCooldown > 0) this.shootCooldown -= 1 * timeScale;
+                    else {
+                        this.shoot();
+                    }
+                }
+
+                // 更新血條 UI
+                const hpPercent = Math.max(0, (this.hp / this.maxHp) * 100);
+                bossHpFill.style.width = `${hpPercent}%`;
+            }
+
+            shoot() {
+                // 根據等級決定攻擊模式
+                const bulletSpeed = 6 + (this.level * 0.5);
+                
+                if (this.level === 1) {
+                    bullets.push(new Bullet(this.x, this.y + 40, bulletSpeed, '#ff0055', 'enemy'));
+                } else if (this.level === 2) {
+                    bullets.push(new Bullet(this.x - 30, this.y + 40, bulletSpeed, '#ff0055', 'enemy'));
+                    bullets.push(new Bullet(this.x + 30, this.y + 40, bulletSpeed, '#ff0055', 'enemy'));
+                } else {
+                    bullets.push(new Bullet(this.x, this.y + 40, bulletSpeed, '#ff0055', 'enemy'));
+                    
+                    const angleBullet = new Bullet(this.x, this.y + 40, bulletSpeed * 0.9, '#ff0055', 'enemy');
+                    angleBullet.vx = -2; // 稍微向左
+                    bullets.push(angleBullet);
+                    
+                    const angleBullet2 = new Bullet(this.x, this.y + 40, bulletSpeed * 0.9, '#ff0055', 'enemy');
+                    angleBullet2.vx = 2; // 稍微向右
+                    bullets.push(angleBullet2);
+                }
+
+                // 射擊頻率
+                this.shootCooldown = Math.max(30, 80 - (this.level * 5));
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                // 畫 Boss 本體
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = '#1a0005';
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 4;
+
+                // 畫一個凶狠的形狀 (倒梯形+尖刺)
+                ctx.beginPath();
+                ctx.moveTo(-60, -40);
+                ctx.lineTo(60, -40);
+                ctx.lineTo(40, 40);
+                ctx.lineTo(0, 60); // 尖端
+                ctx.lineTo(-40, 40);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // 核心 (發光眼)
+                ctx.fillStyle = `rgba(255, 0, 85, ${0.5 + Math.random()*0.5})`; // 閃爍
+                ctx.beginPath();
+                ctx.arc(0, 0, 15, 0, Math.PI*2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+
+        // === 遊戲核心 ===
+
+        function init() {
+            player = new Player();
+            bullets = [];
+            enemies = [];
+            particles = [];
+            stars = [];
+            boss = null;
+            
+            score = 0;
+            level = 1;
+            enemiesDefeated = 0;
+            killsToSummonBoss = 10;
+            bossActive = false;
+            timeScale = 1.0;
+
+            scoreEl.innerText = "SCORE: 0";
+            levelEl.innerText = "LEVEL 1";
+            bossHud.classList.add('hidden');
+            levelMsg.classList.remove('show-level-msg');
+            
+            frames = 0;
+            shakeIntensity = 0;
+
+            for(let i=0; i<50; i++) stars.push(new Star());
+        }
+
+        function spawnEnemy() {
+            if (bossActive) return;
+            let spawnRate = Math.max(20, 60 - (level * 5));
+            if (frames % spawnRate === 0) {
+                enemies.push(new Enemy());
+            }
+        }
+
+        function createExplosion(x, y, color, count = 10, speed = 4) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color, speed));
+            }
+        }
+
+        function checkLevelProgress() {
+            if (!bossActive && enemiesDefeated >= killsToSummonBoss) {
+                spawnBoss();
+            }
+        }
+
+        function spawnBoss() {
+            bossActive = true;
+            boss = new Boss(level);
+            // 清除現有小怪，使用 markedForDeletion 模式
+            enemies.forEach(e => {
+                createExplosion(e.x, e.y, '#ff0055', 5);
+                e.markedForDeletion = true;
+            });
+        }
+
+        function levelComplete() {
+            bossActive = false;
+            boss = null;
+            bossHud.classList.add('hidden');
+            
+            timeScale = 0.2; 
+            setTimeout(() => { timeScale = 1.0; }, 1500);
+
+            levelMsg.innerText = `LEVEL ${level} CLEARED!`;
+            levelMsg.classList.add('show-level-msg');
+            
+            level++;
+            enemiesDefeated = 0;
+            killsToSummonBoss = 10 + (level * 5); 
+
+            setTimeout(() => {
+                levelMsg.classList.remove('show-level-msg');
+                levelEl.innerText = `LEVEL ${level}`;
+            }, 2000);
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            stars.forEach(star => star.update());
+
+            player.update();
+            if (keys.shoot) player.shoot();
+
+            // 更新 Boss
+            if (boss) {
+                boss.update();
+                // Boss 碰撞檢測 (玩家子彈)
+                bullets.forEach(b => {
+                    if (b.source === 'player' && !b.markedForDeletion) {
+                        if (b.x > boss.x - boss.width/2 && 
+                            b.x < boss.x + boss.width/2 && 
+                            b.y > boss.y - boss.height/2 && 
+                            b.y < boss.y + boss.height/2) {
+                            
+                            boss.hp--;
+                            createExplosion(b.x, b.y, '#ffaa00', 3, 2);
+                            b.markedForDeletion = true; // 標記子彈刪除
+
+                            if (boss.hp <= 0) {
+                                createExplosion(boss.x, boss.y, '#ff0055', 100, 8);
+                                score += 1000 * level;
+                                scoreEl.innerText = `SCORE: ${score}`;
+                                shakeIntensity = 30;
+                                levelComplete();
+                            }
+                        }
+                    }
+                });
+                
+                // Boss 撞玩家
+                let dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+                if (dist < 50) gameOver();
+            }
+
+            // 更新子彈與標記出界子彈
+            bullets.forEach(b => {
+                b.update();
+                if(b.vx) b.x += b.vx * timeScale;
+                if (b.y < -50 || b.y > canvas.height + 50) b.markedForDeletion = true;
+                
+                if (b.source === 'enemy') {
+                    let dist = Math.hypot(b.x - player.x, b.y - player.y);
+                    if (dist < 20) gameOver();
+                }
+            });
+
+            // 更新敵機與標記出界敵機
+            enemies.forEach(e => {
+                e.update();
+                const dist = Math.hypot(player.x - e.x, player.y - e.y);
+                if (dist < e.radius + 20) gameOver();
+                if (e.y > canvas.height + 50) e.markedForDeletion = true;
+            });
+
+            // 更新粒子
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].life <= 0) particles.splice(i, 1);
+            }
+
+            // 玩家子彈擊中敵機 (碰撞檢測)
+            if (!boss) { 
+                bullets.forEach(bullet => {
+                    if (bullet.source !== 'player' || bullet.markedForDeletion) return;
+
+                    enemies.forEach(enemy => {
+                        if (enemy.markedForDeletion) return; // 跳過已標記死亡的敵機
+
+                        const dist = Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y);
+                        
+                        if (dist < enemy.radius + bullet.width) {
+                            createExplosion(enemy.x, enemy.y, '#ff0055', 15);
+                            shakeIntensity = 5;
+                            score += 100;
+                            scoreEl.innerText = `SCORE: ${score}`;
+                            
+                            // 增加進度
+                            enemiesDefeated++;
+                            checkLevelProgress();
+
+                            // 關鍵修改：使用標記刪除，而非 setTimeout + splice
+                            bullet.markedForDeletion = true;
+                            enemy.markedForDeletion = true;
+                        }
+                    });
+                });
+            }
+
+            // === 統一清理標記刪除的實體 ===
+            // 這是修復錯誤的關鍵步驟：過濾掉所有被標記的物件
+            bullets = bullets.filter(b => !b.markedForDeletion);
+            enemies = enemies.filter(e => !e.markedForDeletion);
+
+            spawnEnemy();
+            
+            if (shakeIntensity > 0) shakeIntensity *= 0.9;
+            if (shakeIntensity < 0.5) shakeIntensity = 0;
+
+            frames++;
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(5, 5, 10, 0.6)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            if (shakeIntensity > 0) {
+                const dx = (Math.random() - 0.5) * shakeIntensity;
+                const dy = (Math.random() - 0.5) * shakeIntensity;
+                ctx.translate(dx, dy);
+            }
+
+            stars.forEach(star => star.draw());
+
+            if (gameState === 'PLAYING') {
+                particles.forEach(p => p.draw());
+                player.draw();
+                if (boss) boss.draw();
+                bullets.forEach(b => b.draw());
+                enemies.forEach(e => e.draw());
+            }
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            animationId = requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            createExplosion(player.x, player.y, '#00f0ff', 50);
+            shakeIntensity = 20;
+            draw(); 
+            
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neon_shooter_hiscore_v3', highScore);
+                highScoreEl.innerText = `HI: ${highScore}`;
+            }
+
+            bossHud.classList.add('hidden'); // 隱藏血條
+
+            setTimeout(() => {
+                modalText.innerHTML = `任務失敗<br><span style="color:#00f0ff; font-size:1.5rem">${score} 分</span><br><span style="color:#ffeb3b">抵達關卡: ${level}</span>`;
+                startBtn.innerText = "重新部署";
+                modal.classList.remove('hidden');
+            }, 800);
+        }
+
+        function startGame() {
+            init();
+            gameState = 'PLAYING';
+            modal.classList.add('hidden');
+        }
+
+        // === 事件 ===
+        startBtn.addEventListener('click', startGame);
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+            if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+                keys.shoot = true;
+                if (gameState === 'MENU' || gameState === 'GAMEOVER') {
+                    if (!modal.classList.contains('hidden')) startGame();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+            if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') keys.shoot = false;
+        });
+
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const y = touch.clientY - rect.top;
+            if (y > rect.height * 0.6) {
+                const x = touch.clientX - rect.left;
+                if (x < rect.width / 2) keys.left = true;
+                else keys.right = true;
+            } else { keys.shoot = true; }
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', e => {
+            e.preventDefault();
+            keys.left = false; keys.right = false; keys.shoot = false;
+        });
+
+        function resize() {
+            const container = document.querySelector('.game-wrapper');
+            canvas.width = Math.min(800, container.clientWidth - 32);
+            canvas.height = Math.min(window.innerHeight * 0.8, 600);
+            if (player) {
+                player.y = canvas.height - 100;
+                player.x = Math.min(player.x, canvas.width - player.width);
+            }
+        }
+        window.addEventListener('resize', resize);
+
+        init();
+        loop();
+
+    </script>
+</body>
+</html>
